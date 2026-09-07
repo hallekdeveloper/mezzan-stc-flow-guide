@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Solution Architecture · Mezzan ↔ STC</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div class="bg-grid" aria-hidden="true"></div>
+  <div class="bg-glow" aria-hidden="true"></div>
+
+  <header class="site-header">
+    <div class="brand">
+      <span class="brand-mark">M↔S</span>
+      <div>
+        <strong>Mezzan ↔ STC</strong>
+        <span>Solution Architecture · Implement from here</span>
+      </div>
+    </div>
+    <nav class="nav">
+      <a href="index.html">Flow Guide</a>
+      <a href="mostafa.html">Mostafa Package</a>
+      <a href="architecture.html" class="nav-active">Solution Architecture</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <p class="eyebrow">Build playbook · Phase 1 · Org 150001417597</p>
+      <h1>Solution architecture<br /><em>how we implement — step by step</em></h1>
+      <p class="lede">
+        Complete technical path: stack, inbound OAuth webhooks, outbound TIBCO calls, all six APIs with URLs,
+        headers, sample JSON, Zoho mapping rules, and a build checklist you can follow line by line.
+      </p>
+    </section>
+
+    <section class="panel">
+      <nav class="arch-toc" aria-label="Architecture sections">
+        <a href="#stack">1. Stack</a>
+        <a href="#pattern">2. Pattern</a>
+        <a href="#build">3. Build steps</a>
+        <a href="#inbound-apis">4. Inbound APIs</a>
+        <a href="#outbound-apis">5. Outbound APIs</a>
+        <a href="#mapping">6. Zoho mapping</a>
+        <a href="#errors">7. Errors</a>
+        <a href="#uat">8. UAT checklist</a>
+      </nav>
+    </section>
+
+    <section class="panel" id="stack">
+      <div class="section-head">
+        <h2>1. What we use</h2>
+        <p>Clear ownership of each layer.</p>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Layer</th><th>Tool</th><th>Role</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Warehouse UI</td><td>Zoho Inventory</td><td>Items, PO, Purchase Receive, SO, Package, Shipment</td></tr>
+            <tr><td>Orchestration</td><td>Zoho Flow (+ optional API gateway)</td><td>Triggers, mapping, retries, alerts</td></tr>
+            <tr><td>Inbound security</td><td>OAuth 2.0 Bearer webhooks</td><td>STC posts to our secured URLs (not plain Flow URL / not raw Inventory URL)</td></tr>
+            <tr><td>STC gateway</td><td>TIBCO ESB</td><td>In front of on‑prem Oracle · UAT <code>apitest.stcs.com.sa</code></td></tr>
+            <tr><td>Specs</td><td>DBSchenker v4.3 · ERP-SupplyChain v3.1</td><td>Payload shapes + outbound GRN / Shipping Confirmation</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel" id="pattern">
+      <div class="section-head">
+        <h2>2. Solution pattern (simple)</h2>
+      </div>
+      <div class="arch-box">
+        <pre class="json" style="background:#0b1c2c">STC / TIBCO
+   │  OAuth token + POST JSON
+   ▼
+Our webhook API  (Item / PO / ASN / SO)
+   │  validate Bearer → map fields
+   ▼
+Zoho Inventory  (create / update records)
+
+Mezzan works in Zoho (approve receive · pack · ship)
+   │
+   ▼
+Zoho Flow HTTP  →  TIBCO AddGRN / SendShippingConfirmation</pre>
+      </div>
+      <div class="cards two" style="margin-top:1rem">
+        <article class="card">
+          <h3>Inbound (STC → Zoho)</h3>
+          <p>STC pushes Item, PO, ASN, Sales Order. We create Zoho records. Stock does <strong>not</strong> post on ASN — only after Mezzan approval.</p>
+        </article>
+        <article class="card">
+          <h3>Outbound (Zoho → STC)</h3>
+          <p><strong>AddGRN</strong> after Purchase Receive approved. <strong>SendShippingConfirmation</strong> after shipment shipped.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="panel" id="build">
+      <div class="section-head">
+        <h2>3. Build steps (follow in order)</h2>
+      </div>
+      <ol class="step-build">
+        <li><strong>Lock STC answers</strong> — UAT api_key + Client-Id, webhook push yes, firewall allowlist, OAuth client credentials, Section 8 decisions (SO PO field, ASN line locator, Priority/Ship With Care enums).</li>
+        <li><strong>Create OAuth webhook layer</strong> — token URL + 4 POST endpoints. Validate Bearer. Return clear 401/400.</li>
+        <li><strong>Connect Zoho Inventory</strong> — server OAuth / connection with org id <code>150001417597</code>. Write Items, POs, PRs, SOs with exact CF api_names.</li>
+        <li><strong>Inbound mapping</strong> — implement Item → PO → ASN(PR Pending) → SO using rules below. Locator per ASN line. Batch only on approval.</li>
+        <li><strong>Approval trigger</strong> — on Purchase Receive approved: post stock logic already in Zoho; Flow calls AddGRN.</li>
+        <li><strong>Outbound ship trigger</strong> — on Shipment shipped: Flow calls SendShippingConfirmation with <code>cf_batch_id</code>.</li>
+        <li><strong>Retries &amp; alerts</strong> — 408/409 retry 3×; 400/401 no blind retry; email alert after failure.</li>
+        <li><strong>UAT</strong> — run checklist; verify values in Zoho UI, not only HTTP 200.</li>
+      </ol>
+    </section>
+
+    <section class="panel" id="inbound-apis">
+      <div class="section-head">
+        <h2>4. Inbound APIs (STC → our webhooks)</h2>
+        <p>Payload shapes from DBSchenker v4.3. STC will POST equivalent JSON to <strong>our</strong> OAuth URLs. Spec paths below are the reference shapes / old STC URLs.</p>
+      </div>
+
+      <!-- ITEM -->
+      <article class="api-block" id="api-item">
+        <header>
+          <h3>API 1 · AddItemRequest</h3>
+          <p>Creates / updates Item in Zoho Inventory</p>
+        </header>
+        <div class="api-meta">
+          <span class="chip in">INBOUND</span>
+          <span class="chip">POST</span>
+          <span class="chip">Spec path: /tibco/dbschenker/v1/supply-chain/item-master</span>
+        </div>
+        <div class="api-body">
+          <h4>Headers</h4>
+          <ul>
+            <li><code>api_key</code> · <code>Client-Id</code> · <code>Sender-Msg-Id</code> (unique per call)</li>
+            <li>Our layer also requires <code>Authorization: Bearer &lt;access_token&gt;</code></li>
+          </ul>
+          <h4>What we do in Zoho</h4>
+          <ul>
+            <li>SKU / item code = STC <code>itemCode</code> (searchable by name or SKU only)</li>
+            <li>Map <code>supplierItemCode</code> → <code>cf_supplier_s_item_code</code> (mandatory)</li>
+            <li>Batch tracking ON · Serial OFF — ignore serial mapping</li>
+          </ul>
+          <h4>Sample JSON (from STC spec)</h4>
+          <pre class="json">{
+  "batchId": "80",
+  "batchDate": "2023-01-12T12:28:01",
+  "items": [{
+    "itemCode": "CON-SNT-CP8845K9",
+    "itemShortDescription": "SNTC-8X5XNBD Cisco IP Phone 8845 Duration:36 Months",
+    "itemLongDescription": "SNTC-8X5XNBD Cisco IP Phone 8845 Duration:36 Months",
+    "supplierItemCode": "456",
+    "uom": "EA",
+    "serialControl": "1",
+    "creationDate": "2023-01-12T12:28:01",
+    "createdBy": "-1"
+  }]
+}</pre>
+        </div>
+      </article>
+
+      <!-- PO -->
+      <article class="api-block" id="api-po">
+        <header>
+          <h3>API 2 · AddPurchaseOrder</h3>
+          <p>Creates Purchase Order (Issued) — preserve STC PO number</p>
+        </header>
+        <div class="api-meta">
+          <span class="chip in">INBOUND</span>
+          <span class="chip">POST</span>
+          <span class="chip">/tibco/dbschenker/v1/supply-chain/purchase-order</span>
+        </div>
+        <div class="api-body">
+          <h4>What we do in Zoho</h4>
+          <ul>
+            <li>Status <strong>Issued</strong> (not Draft)</li>
+            <li><strong>Intended Sub-Inventory</strong> mandatory at header (one of 18 zone names)</li>
+            <li>Lines: Oracle/Supplier codes, qty, project · line CF <code>cf_vendor_po_line_number</code></li>
+            <li>No stock movement</li>
+          </ul>
+          <h4>Sample JSON (trimmed)</h4>
+          <pre class="json">{
+  "BatchId": "0001",
+  "BatchDate": "2022-12-08T12:34:12",
+  "purchaseOrders": [{
+    "PoNumber": "4501000015",
+    "ReleaseNumber": "001",
+    "PoCreationDate": "2022-12-08T12:34:12",
+    "PoDescription": "Test PO1",
+    "ProjectNumber": "14567",
+    "LineItems": [{
+      "PoNumber": "4501000015",
+      "LineNumber": "30",
+      "LineType": "10000005",
+      "ProjectNumber": "14567",
+      "OracleItemCode": "4321151500035",
+      "SupplierItemCode": "4321151500035",
+      "ItemDescription": "First item",
+      "UOM": "EA",
+      "OrderedQuantity": "2"
+    }]
+  }]
+}</pre>
+        </div>
+      </article>
+
+      <!-- ASN -->
+      <article class="api-block" id="api-asn">
+        <header>
+          <h3>API 3 · AddASN</h3>
+          <p>Creates Purchase Receive in Pending Approval — no stock yet</p>
+        </header>
+        <div class="api-meta">
+          <span class="chip in">INBOUND</span>
+          <span class="chip">POST</span>
+          <span class="chip">/tibco/erp/supply-chain/v1/asnasn</span>
+        </div>
+        <div class="api-body">
+          <h4>What we do in Zoho</h4>
+          <ul>
+            <li>Purchase Receive · status Pending Approval</li>
+            <li>Sub-Inventory mandatory · stock target later = RECEIVING bin only</li>
+            <li><strong>Locator per line</strong> → <code>cf_storage_location</code> (required for batch)</li>
+            <li>Line refs: vendor line, STC item, supplier item, project, release</li>
+            <li>Do <strong>not</strong> auto-approve</li>
+          </ul>
+          <h4>Note</h4>
+          <p style="color:var(--muted);margin:0">v4.3 sample may omit line locator — Mostafa/handbook require STC to send it. Confirm in Section 8 / STC new API doc.</p>
+        </div>
+      </article>
+
+      <!-- SO -->
+      <article class="api-block" id="api-so">
+        <header>
+          <h3>API 4 · AddSalesOrder / CreateRFD</h3>
+          <p>Creates Sales Order — stock committed, not shipped</p>
+        </header>
+        <div class="api-meta">
+          <span class="chip in">INBOUND</span>
+          <span class="chip">POST</span>
+          <span class="chip">/tibco/dbschenker/v1/supply-chain/sales-order</span>
+        </div>
+        <div class="api-body">
+          <h4>What we do in Zoho</h4>
+          <ul>
+            <li>Header: rfdNumber, dates, customer, project, waybill</li>
+            <li><code>transactionPriority</code> → dropdown High/Medium/Low (normalise case)</li>
+            <li><code>shipWithCare</code> → Yes/No</li>
+            <li>Map STC <code>poNumber</code> → <code>cf_po_number</code> (keep <code>cf_locator_po_number</code> separate)</li>
+            <li>Lines: item, qty, subInventory, poLineNumber → use correct CF api_name</li>
+          </ul>
+          <h4>Sample header fields (from spec)</h4>
+          <pre class="json">{
+  "batchId": "0001",
+  "salesOrders": [{
+    "rfdNumber": "4501001011",
+    "poNumber": "...",
+    "transactionPriority": "high",
+    "salesOrderNumber": "...",
+    "lineItems": [{
+      "itemCode": "...",
+      "poLineNumber": "...",
+      "subInventory": "...",
+      "shipWithCare": "Yes",
+      "quantity": "1"
+    }]
+  }]
+}</pre>
+        </div>
+      </article>
+    </section>
+
+    <section class="panel" id="outbound-apis">
+      <div class="section-head">
+        <h2>5. Outbound APIs (Zoho → STC TIBCO)</h2>
+        <p>We POST to these UAT URLs after warehouse actions. Spec: ERP-SupplyChain v3.1.</p>
+      </div>
+
+      <article class="api-block" id="api-grn">
+        <header>
+          <h3>API 5 · AddGRN</h3>
+          <p>Fire when Purchase Receive is approved in Zoho</p>
+        </header>
+        <div class="api-meta">
+          <span class="chip out">OUTBOUND</span>
+          <span class="chip">POST</span>
+          <span class="chip">https://apitest.stcs.com.sa/tibco/erp/supplychain/grn</span>
+        </div>
+        <div class="api-body">
+          <h4>Trigger</h4>
+          <ul>
+            <li>Zoho event: Purchase Receive → Approved / Received</li>
+            <li>Stock already posted to RECEIVING + batch created at this moment</li>
+          </ul>
+          <h4>Headers</h4>
+          <ul>
+            <li><code>api_key</code> · <code>Client-Id</code> (Mezzan/Hallek values from STC) · <code>Sender-Msg-Id</code></li>
+          </ul>
+          <h4>Sample JSON (from v3.1)</h4>
+          <pre class="json">{
+  "batchId": 771,
+  "batchDate": "2022-12-08T12:34:12",
+  "shipmentNumber": 12345678,
+  "shipmentStatus": "Dispatched",
+  "checkInDate": "2023-01-25T12:34:12",
+  "loadingStartTime": "2023-01-25T12:34:12",
+  "loadinginTime": "2023-01-25T12:34:12",
+  "shippmentCompletionTime": "2023-01-25T12:34:12",
+  "mawb": "AWB1",
+  "numberOfPallets": "24",
+  "numberOfCartons": "12",
+  "grnDocNum": "11111",
+  "truckDriverName": "HiM",
+  "truckDriverIqama": "AV1234",
+  "lineItemDetails": [{
+    "purchaseOrderNumber": 4501000027,
+    "projectNumber": "14567",
+    "shipsetNumber": "10007",
+    "releaseNumber": "001",
+    "lineItem": [{
+      "vendorPOLineNumber": "01",
+      "stcsItemCode": "4321151500035",
+      "supplierItemCode": "UCSB-B480-M5-U",
+      "itemDescription": "UCS B480 M5 BLADE...",
+      "poLineReference": "1",
+      "quantity": 1,
+      "serialNumber": "",
+      "storageLocation": "A1-17-01"
+    }]
+  }]
+}</pre>
+          <p style="color:var(--muted);margin:0.75rem 0 0;font-size:0.92rem">Keep spec typos if STC requires them: <code>loadinginTime</code>, <code>shippmentCompletionTime</code>.</p>
+        </div>
+      </article>
+
+      <article class="api-block" id="api-ship">
+        <header>
+          <h3>API 6 · SendShippingConfirmation</h3>
+          <p>Fire when Shipment is shipped / dispatched in Zoho</p>
+        </header>
+        <div class="api-meta">
+          <span class="chip out">OUTBOUND</span>
+          <span class="chip">POST</span>
+          <span class="chip">https://apitest.stcs.com.sa/tibco/erp/supplychain/shipping/confirmation</span>
+        </div>
+        <div class="api-body">
+          <h4>Trigger</h4>
+          <ul>
+            <li>Zoho: Shipment Order status = Shipped</li>
+            <li>Include dispatched lot via <code>cf_batch_id</code> on shipment</li>
+          </ul>
+          <h4>Sample JSON (from v3.1)</h4>
+          <pre class="json">{
+  "deliveryHeader": {
+    "batchid": "01",
+    "batchDate": "2023-01-23T00:00:00",
+    "deliveryNumber": "01",
+    "actualDeliveryTime": "2023-01-23T14:21:00",
+    "rfdNumber": "44634",
+    "rfdDate": "2023-01-23T00:00:00",
+    "deliveryDate": "2023-01-23T00:00:00",
+    "deliverBy": "TBD"
+  },
+  "deliveryLine": [{
+    "shipsetNumber": "1",
+    "poLineNumber": "03",
+    "itemCode": "4321150100026",
+    "supplieritemcode": "UCSB-5108-AC2=",
+    "quantity": "1",
+    "serialNumber": ""
+  }]
+}</pre>
+        </div>
+      </article>
+    </section>
+
+    <section class="panel" id="mapping">
+      <div class="section-head">
+        <h2>6. Zoho mapping rules (do not skip)</h2>
+      </div>
+      <div class="cards two">
+        <article class="card">
+          <h3>Always</h3>
+          <ul>
+            <li>Org ID on every Zoho API call: <code>150001417597</code></li>
+            <li><code>cf_supplier_s_item_code</code> on every line</li>
+            <li>Stock only to <code>{City} - {SubInv} - RECEIVING</code></li>
+            <li>Batch: <code>{dd/MM/yyyy} - {Locator} - {SupplierItemCode}</code></li>
+            <li>Verify CF values in Zoho UI after write</li>
+          </ul>
+        </article>
+        <article class="card">
+          <h3>API name traps</h3>
+          <ul>
+            <li>Lines: <code>cf_vendor_po_line_number</code></li>
+            <li>SO header / Shipment: <code>cf_po_line_number</code></li>
+            <li>PR line locator: <code>cf_storage_location</code></li>
+            <li>Wrong name = HTTP 200 + empty field</li>
+          </ul>
+        </article>
+      </div>
+      <div class="callout" style="margin-top:1rem">
+        <strong>Out of Phase 1:</strong> POD, Move Order API, Returns/RTV, stock snapshot, PO update/cancel beyond create.
+      </div>
+    </section>
+
+    <section class="panel" id="errors">
+      <div class="section-head">
+        <h2>7. Error handling</h2>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>HTTP</th><th>Meaning</th><th>Our action</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>200 / 201 (+ business success flag)</td><td>OK</td><td>Log · no retry</td></tr>
+            <tr><td>400</td><td>Validation</td><td>Alert · fix payload · no blind retry</td></tr>
+            <tr><td>401</td><td>Auth</td><td>Alert · check api_key / Client-Id / Bearer</td></tr>
+            <tr><td>404</td><td>URL</td><td>Alert · verify endpoint</td></tr>
+            <tr><td>408 / 409</td><td>Timeout / backend</td><td>Retry up to 3× then alert</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p style="color:var(--muted);margin:0.75rem 0 0"><code>batchId</code> must be unique. Duplicate batchId returns error.</p>
+    </section>
+
+    <section class="panel" id="uat">
+      <div class="section-head">
+        <h2>8. UAT checklist</h2>
+      </div>
+      <ul class="checks">
+        <li>Item create + update</li>
+        <li>Multi-line PO · STC PO number preserved · Issued</li>
+        <li>ASN → PR Pending · no stock · locator on each line</li>
+        <li>Approve PR → stock in RECEIVING · batch formula correct · AddGRN 200/201</li>
+        <li>SO / RFD with Priority + Ship With Care + PO CFs</li>
+        <li>Ship → SendShippingConfirmation success · cf_batch_id set</li>
+        <li>400 and 408/409 behaviour verified</li>
+        <li>All CF values visible in Zoho org (not only HTTP success)</li>
+      </ul>
+      <div class="hero-actions" style="margin-top:1.25rem">
+        <a class="btn primary" href="index.html">Open Flow Guide (animations)</a>
+        <a class="btn ghost" href="mostafa.html">Open Mostafa Package</a>
+      </div>
+    </section>
+
+    <footer class="site-footer">
+      <p>Solution Architecture · Mezzan ↔ STC Phase 1 · Specs: DBSchenker v4.3 · ERP-SupplyChain v3.1 · Handbook 07 Sep 2026</p>
+      <p><a href="https://mezzan-stc-flow-guide.vercel.app/architecture.html">Live page</a></p>
+    </footer>
+  </main>
+</body>
+</html>
