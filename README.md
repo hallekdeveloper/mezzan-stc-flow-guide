@@ -1,26 +1,21 @@
 # Mezzan ↔ STC Integration Flow Guide
 
-Standalone visual website (do not mix with other project files).
+Standalone visual website.
 
-## Open
+## Live
 
-Double-click `index.html`  
-or from this folder:
+- Flow guide: https://mezzan-stc-flow-guide.vercel.app  
+- Mostafa package: https://mezzan-stc-flow-guide.vercel.app/mostafa.html  
 
-```bash
-start index.html
-```
+## Open locally
 
-## Contents
+Double-click `index.html` or `mostafa.html`.
 
-- Animated overview (STC ↔ Zoho)
-- Warehouse structure (locations / 18 zones / RECEIVING bins)
-- Inbound purchase cycle player
-- Approval gate animation
-- Outbound sales / shipment cycle player
-- Custom fields & API name traps
-- Batch formula
-- Six Phase-1 APIs
-- Open decisions + verification checklist
+## Pages
 
-Based on Mostafa’s Integration Reference Handbook + cycle recording (07 Sep 2026).
+1. **Flow Guide** (`index.html`) — animated inbound / approval / outbound  
+2. **Mostafa Package** (`mostafa.html`) — his email notes, completed work, handbook PDF, cycle video link, open decisions  
+
+## Repo
+
+https://github.com/hallekdeveloper/mezzan-stc-flow-guide

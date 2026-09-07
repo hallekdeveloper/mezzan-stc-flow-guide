@@ -1,0 +1,374 @@
+
+===== PAGE 1 =====
+Mezzan / STC — Integration Reference Handbook 
+Zoho Inventory  ·  Organisation 150001417597  ·  prepared by Hallek ERP Consulting 
+For: Mohamed Waqqas, Integration Development 
+ 
+How to use this document 
+This is the single reference for the integration build. It covers the warehouse structure the transactions operate 
+within, the inbound and outbound cycles step by step, every custom field and why it exists, the STC API files 
+and what each maps to, and the decisions still outstanding. 
+It supersedes nothing — it consolidates. The field inventory workbook issued previously remains the searchable 
+reference for api_names; this document explains what those fields are for and how the transactions behave. 
+Read Section 5 before writing any mapping. Three fields carry identical on-screen labels but different 
+api_name values depending on the module. Zoho accepts a payload containing a wrongly-named custom 
+field, returns HTTP success, and silently discards the value. These failures do not surface in testing unless 
+results are verified against the organisation. 
+1.  Warehouse structure 
+Every transaction resolves to a location, a zone and a bin. Understanding this first makes the rest of the 
+document straightforward. 
+1.1  Location hierarchy 
+There is a parent location, STC warehouses, which holds the physical address and has bin tracking disabled. It 
+is a container, not a stock-holding location. 
+Beneath it sit six child locations, one per STC entity. Each has its own vendor and customer record — twelve 
+contacts in total. 
+Entity 
+Location ID 
+Bins built 
+Solutions by STC 
+49066000000116096 
+Full — ~3,488 bins 
+Upsource by Solution 
+49066000000121100 
+Zones only 
+Pulse by Solution 
+49066000000121122 
+Zones only 
+VAS by Solution 
+49066000000121142 
+Zones only 
+Solution Operation Project 
+49066000000121162 
+Zones only 
+STC Disposal Project 
+49066000000121182 
+Zones only 
+1.2  Zones 
+Each entity carries eighteen zones: three cities (Riyadh, Dammam, Jeddah) × two pools (standard, FreeStock) 
+× three sub-inventories (Project, Internal, Unused). 
+The zone name is exactly the value the Sub Inventory and Intended Sub-Inventory dropdowns accept. A value 
+outside that list is rejected. 
+Each entity also carries three Zoho default zones created at setup, including a legacy “Receiving Zone” holding a bin 
+called “Receiving Area”. That is not part of this design — never target it. 
+1.3  Bins 
+Every zone has one RECEIVING bin, named “{City} - {Sub-Inventory} - RECEIVING”. Physical shelf bins follow 
+the same pattern with the locator appended, for example “Riyadh - Project - MZNAC0100A”. The spaces either 
+side of each hyphen are part of the name. 
+The integration writes stock ONLY to the eighteen RECEIVING bins. It never targets a physical shelf location. 
+Movement onto shelves is a Move Order, performed manually by Mezzan, and is outside Phase 1 scope. Move 
+Order is not a workflow-capable entity in Zoho and cannot carry custom fields. 
+1.4  Resolving a sub-inventory to a bin 
+City is Dammam when the locator's fourth segment is Dammam, otherwise Riyadh. Sub-inventory maps Project 
+to Project, InternalN to Internal, Internal to Internal, UnUsed to Unused. Target bin is “{City} - {SubInv} - 
+RECEIVING”. 
+ 
+ 
+
+===== PAGE 2 =====
+2.  Inbound cycle 
+Four steps, two of which are integration touchpoints. There is no separate ASN object in Zoho — an ASN 
+becomes a Purchase Receive. 
+Step 
+STC endpoint 
+Zoho object 
+Stock effect 
+1 
+AddPurchaseOrder 
+Purchase Order 
+None 
+2 
+AddASN 
+Purchase Receive (Pending Approval) 
+None — nothing posts 
+3 
+— (Mezzan approve in Zoho) 
+Purchase Receive (Received) 
+Stock posts to RECEIVING 
+bin; batch created 
+4 
+AddGRN (outbound) 
+— fires on approval 
+Already posted at step 3 
+2.1  Why the approval gate exists 
+The ASN tells Mezzan goods are coming. The approval is Mezzan confirming they physically arrived. Stock 
+must not post before that, or the system shows inventory that is not on the floor. Do not auto-approve or design 
+around this. 
+2.2  What happens on approval 
+● 
+Stock posts into the RECEIVING bin of the zone named in Sub-Inventory 
+● 
+A batch is created, with the reference constructed as described in Section 6 
+● 
+AddGRN fires back to STC 
+PO Number on the receipt is native, inherited from the purchase order and locked. Receipt number is native and 
+auto-generated on its own series. 
+2.3  Put-away — for context, not for build 
+Stock then sits in the receiving bin until Mezzan move it onto physical shelves by Move Order import. This is 
+deliberate: STC locator values have no bridge to Mezzan's MZNxxxx barcodes, so nothing in STC's data can 
+determine which shelf a carton belongs on. Only the person placing it knows. 
+ 
+3.  Outbound cycle 
+ 
+Step 
+STC endpoint 
+Zoho object 
+Stock effect 
+1 
+AddSalesOrder / CreateRFD 
+Sales Order 
+Committed, not dispatched 
+2 
+— (Mezzan pick and pack) 
+Package 
+Batch selected at picking 
+3 
+— (Mezzan ship) 
+Shipment Order 
+Stock leaves 
+4 
+SendShippingConfirmation 
+— fires on dispatch 
+Already deducted at step 3 
+3.1  Batch selection at picking 
+Every item is batch tracked, so the picker selects which batch is being dispatched. This has an operational 
+consequence worth knowing: because each distinct combination of received date, locator and supplier item 
+code becomes its own batch, a single item can present a long list at this point. One item in the current data 
+carries seventy separate batches. 
+Serial tracking is OFF across the organisation. TrackSerialNumber is false on all items. Serial numbers are not part of 
+any flow — do not map them. 
+3.2  Reporting back 
+cf_batch_id on the Shipment Order carries the dispatched lot back to STC. Since everything is batch tracked, it 
+should always be populated. 
+ 
+ 
+
+===== PAGE 3 =====
+4.  Custom fields — what they are for 
+The field inventory workbook lists every api_name. This section explains why they exist, which is what 
+determines correct mapping. 
+4.1  The four STC reference fields 
+STC asked that PO No, Line No, Project No and Release No be captured so they can track shipment, dispatch 
+and reporting. These are held at LINE level, not header, because a single receipt can cover several PO lines 
+with different values. 
+Field 
+api_name 
+Why line level 
+PO Line Number 
+cf_vendor_po_line_number 
+Differs per line by definition 
+Project Number 
+cf_project_number 
+One receipt may span projects 
+Release Number 
+cf_release_number 
+Follows the PO line 
+Supplier's Item Code 
+cf_supplier_s_item_code 
+Item-specific. MANDATORY. 
+cf_supplier_s_item_code is MANDATORY at line level on item, purchaseorder_item, purchase_receive_item 
+and salesorder_item. Any payload creating those records without it will be rejected. 
+4.2  Locator 
+cf_storage_location at Purchase Receive line level holds STC's locator. It exists at line level because STC 
+locators vary per line — the second segment is a line sequence. The header fields cf_locator_full and 
+cf_locator_location cannot represent a multi-line receipt. 
+The locator is a five-segment string: Project . Line Number . PO Number . Location . Shipset Number. For 
+example 16602.31.41294.DB Schenker.00000 
+4.3  Restricted dropdowns 
+Four fields accept only listed values. Anything else is rejected outright. 
+Field 
+Entity 
+Allowed values 
+Sub Inventory 
+item, PO line, PR line, SO line 
+The 18 zone names 
+Intended Sub-Inventory 
+purchaseorder (header) 
+The 18 zone names 
+Transaction Priority 
+salesorder (header) 
+High / Medium / Low 
+Ship With Care 
+salesorder (header) 
+Yes / No 
+ 
+ 
+
+===== PAGE 4 =====
+5.  API name traps — read before mapping 
+Zoho accepts a payload containing a wrongly-named custom field, returns success, and discards the value. 
+These do not surface in testing unless results are verified against the organisation rather than the HTTP 
+response. 
+5.1  PO Line Number has two api_names 
+Entity 
+api_name 
+item 
+cf_vendor_po_line_number 
+purchaseorder_item 
+cf_vendor_po_line_number 
+purchase_receive_item 
+cf_vendor_po_line_number 
+salesorder_item 
+cf_vendor_po_line_number 
+salesorder  (HEADER) 
+cf_po_line_number 
+shipment_order 
+cf_po_line_number 
+5.2  Locator has three api_names 
+Entity 
+api_name 
+Label 
+purchase_receive_item 
+cf_storage_location 
+Locator — USE THIS 
+purchase_receive (header) 
+cf_locator_full 
+Locator (full) 
+purchase_receive (header) 
+cf_locator_location 
+Locator Location 
+5.3  Sales Order carries two PO number fields 
+cf_po_number and cf_locator_po_number both exist on the Sales Order header. Which one the integration 
+populates is an open decision — see Section 8. 
+5.4  Discovering fields correctly 
+Header and line fields live under different entity names. Querying list_custom_fields on the parent returns 
+item_entity_fields empty, which is misleading — line fields live under the separate *_item entity. 
+list_custom_fields_simple returns empty for line entities and cannot be relied on. 
+ 
+6.  Batch reference construction 
+Agreed with STC so they can see stock categorised by their own identifying information. 
+{Date Received} - {Locator} - {Supplier Item Code} 
+Example:  03/03/2026 - 16602.31.41294.DB Schenker.00000 - 6536501-1 
+● 
+Separator is a SPACED hyphen. STC supplier codes contain hyphens themselves, so an unspaced 
+separator makes the parts ambiguous. 
+● 
+The locator goes in EXACTLY as STC supply it — full five segments, never shortened or parsed. 
+● 
+Build from the LINE-level locator, not the header. 
+● 
+Date is dd/MM/yyyy. The native manufactured_date field carries the same received date as yyyy-MM-
+dd. 
+Consequence: every distinct date/locator/supplier combination becomes its own batch. Expect high batch counts — 
+roughly 2,000 batches across 782 items in the Solutions data, one item carrying 70. 
+ 
+ 
+
+===== PAGE 5 =====
+7.  STC API files — what maps where 
+Six endpoints in Phase 1, drawn from the DBSchenker v4.3 and ERP-SupplyChain v3.1 / v2.0 specifications. 
+Test endpoint apitest.stcs.com.sa 
+Endpoint 
+Direction 
+Creates in Zoho 
+Key mapping notes 
+AddItemRequest 
+STC → Zoho 
+Item 
+SKU must carry the STC item 
+code — items are searchable in 
+transactions by name or SKU 
+only, never by custom field. 
+Supplier's Item Code 
+mandatory. 
+AddPurchaseOrder 
+STC → Zoho 
+Purchase Order 
+Set status Issued for open POs; 
+default is Draft. Intended Sub-
+Inventory mandatory at header. 
+AddASN 
+STC → Zoho 
+Purchase Receive (Pending 
+Approval) 
+Must carry locator PER LINE. 
+Sub-Inventory mandatory at 
+header. No stock posts. 
+AddGRN 
+Zoho → STC 
+— 
+Fires on Mezzan approval of the 
+Purchase Receive. Stock posts 
+at that moment. 
+AddSalesOrder / CreateRFD 
+STC → Zoho 
+Sales Order 
+Two restricted dropdowns — 
+Transaction Priority, Ship With 
+Care. 
+SendShippingConfirmation 
+Zoho → STC 
+— 
+Fires on dispatch. cf_batch_id 
+carries the dispatched lot. 
+ 
+8.  Open decisions 
+These must be answered before the mapping can be finalised. They are not optional. 
+# 
+Decision 
+Owner 
+Why it blocks 
+1 
+Sales Order header: populate cf_po_number or 
+cf_locator_po_number? 
+STC 
+Both exist. Wrong choice produces 
+reconciliation mismatches. 
+2 
+Does the ASN payload carry the locator per line? 
+STC 
+The batch reference depends on it, 
+and locators vary by line. 
+3 
+Do STC's Transaction Priority and Ship With Care 
+values match the dropdown lists exactly? 
+STC 
+A value outside the list is rejected 
+outright. 
+ 
+9.  Verification checklist 
+Before declaring any endpoint complete: 
+● 
+Line-level custom fields populate on EVERY line, not just the first — the commonest failure is a value 
+landing on the header only 
+● 
+cf_supplier_s_item_code present on every line of every payload 
+● 
+Sub-inventory resolves to one of the eighteen exact zone names 
+● 
+Stock lands in the correct RECEIVING bin, never a physical locator 
+● 
+Batch reference matches the Section 6 format exactly, including spaced separators 
+● 
+Batch reference built from the LINE-level locator, tested on a multi-line receipt where locators differ 
+● 
+ASN creates a receipt in pending approval with no stock movement 
+● 
+GRN fires only on approval, and stock posts at that point 
+● 
+PO Line Number targets the correct api_name for the module under test 
+● 
+A partial receipt leaves the PO partially_received with the correct balance open 
+Verify posted results against the organisation, not the HTTP response. A 200 does not mean the custom 
+fields landed. 
+ 
+ 
+
+===== PAGE 6 =====
+10.  Environment 
+Item 
+Value 
+Organisation ID 
+150001417597 — required on every API call 
+URL 
+inventory.zoho.sa 
+Test endpoint 
+apitest.stcs.com.sa 
+Specifications 
+DBSchenker APIs v4.3 · ERP-SupplyChain APIs v3.1 / v2.0 
+Batch tracking 
+ON for every item 
+Serial tracking 
+OFF — do not map 
+Bin tracking 
+ON 
+ 

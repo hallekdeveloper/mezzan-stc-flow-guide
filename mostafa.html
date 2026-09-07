@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mostafa’s Package · Mezzan ↔ STC</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div class="bg-grid" aria-hidden="true"></div>
+  <div class="bg-glow" aria-hidden="true"></div>
+
+  <header class="site-header">
+    <div class="brand">
+      <span class="brand-mark">M↔S</span>
+      <div>
+        <strong>Mezzan ↔ STC</strong>
+        <span>Mostafa’s handover · Read this first</span>
+      </div>
+    </div>
+    <nav class="nav">
+      <a href="index.html">Flow Guide</a>
+      <a href="mostafa.html" class="nav-active">Mostafa Package</a>
+      <a href="#resources">Resources</a>
+      <a href="#completed">Completed</a>
+      <a href="#email">Email notes</a>
+      <a href="#handbook">Handbook</a>
+      <a href="#ask-waqqas">Ask Waqqas</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <p class="eyebrow">From Mostafa Mohsen · Zoho Finance Specialist · Hallek</p>
+      <h1>Everything Mostafa handed over<br /><em>for the integration build</em></h1>
+      <p class="lede">
+        Structured summary of his email, the Integration Reference Handbook, the purchase/sales cycle recording,
+        what he already completed on Zoho, and the three points that cause rework if missed.
+        Integration ownership sits with Waqqas; Mostafa supports Zoho config / fields / data only.
+      </p>
+      <div class="hero-actions">
+        <a class="btn primary" href="#resources">Open video &amp; PDF</a>
+        <a class="btn ghost" href="index.html">Open animated flow guide</a>
+      </div>
+    </section>
+
+    <!-- READING PATH -->
+    <section class="panel" id="path">
+      <div class="section-head">
+        <h2>How to read this package</h2>
+        <p>Follow this order so the build makes sense end to end.</p>
+      </div>
+      <ol class="path-steps">
+        <li><strong>Resources</strong> — watch the cycle video, download the handbook PDF</li>
+        <li><strong>What Mostafa completed</strong> — know what is already live in Zoho</li>
+        <li><strong>Email highlights</strong> — three rework traps he flagged</li>
+        <li><strong>Handbook flow</strong> — warehouse → inbound → approval → outbound → fields → APIs</li>
+        <li><strong>Open decisions</strong> — what Waqqas must confirm with STC</li>
+        <li><strong>Animated guide</strong> — <a href="index.html">Flow Guide tab</a> for visual playback</li>
+      </ol>
+    </section>
+
+    <!-- RESOURCES -->
+    <section class="panel" id="resources">
+      <div class="section-head">
+        <h2>1. Resources Mostafa shared</h2>
+        <p>Primary materials attached / linked after the session.</p>
+      </div>
+      <div class="cards two">
+        <article class="card resource">
+          <span class="tag">Video · ~16 min</span>
+          <h3>Purchase &amp; Sales cycle recording</h3>
+          <p>Mezzan Vs STC — Zoho Purchase / Sales cycle (07.09.2026). Live UI walkthrough of PO, Purchase Receive approval, SO, package, shipment.</p>
+          <div class="hero-actions" style="margin-top:1rem">
+            <a class="btn primary" href="https://workdrive.zohoexternal.com/external/b2feb790600dc9f0c8143c37c23aefe2e80195769bc8f25b8f6bfc4b25afcecb" target="_blank" rel="noopener">Open video (WorkDrive)</a>
+          </div>
+          <p class="note" style="margin-top:0.75rem">Public link provided by Waqqas for team access.</p>
+        </article>
+        <article class="card resource">
+          <span class="tag">PDF · Handbook</span>
+          <h3>Integration Reference Handbook</h3>
+          <p>Consolidated build bible: warehouse, cycles, custom fields, API name traps, batch formula, six endpoints, open decisions, checklist. Org <code>150001417597</code>.</p>
+          <div class="hero-actions" style="margin-top:1rem">
+            <a class="btn primary" href="assets/Mezzan_STC_Integration_Handbook.pdf" target="_blank" rel="noopener">Download / open PDF</a>
+          </div>
+          <p class="note" style="margin-top:0.75rem">Field inventory workbook remains the searchable api_name list; handbook explains behaviour.</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- COMPLETED -->
+    <section class="panel" id="completed">
+      <div class="section-head">
+        <h2>2. What Mostafa completed (Zoho side)</h2>
+        <p>His words: configuration and data are complete and validated by STC on both entities. Integration is the remaining path to go-live.</p>
+      </div>
+      <div class="timeline">
+        <div class="tl-item">
+          <h4>Organisation live</h4>
+          <p>Zoho Inventory org <code>150001417597</code> · <code>inventory.zoho.sa</code> · Mezzan Saudi trading Company</p>
+        </div>
+        <div class="tl-item">
+          <h4>Custom fields &amp; flags</h4>
+          <p>Mandatory flags, dropdowns, line-level STC references configured and verified</p>
+        </div>
+        <div class="tl-item">
+          <h4>Warehouse structure</h4>
+          <p>Parent STC warehouses + 6 entity locations · 18 zones each · RECEIVING bins · Solutions full shelf bins (~3,488)</p>
+        </div>
+        <div class="tl-item">
+          <h4>Solutions by STC data</h4>
+          <p>218 POs / 2,452 lines · Opening stock ~782 items / ~469,859 units · STC validated</p>
+        </div>
+        <div class="tl-item">
+          <h4>Pulse by Solution data</h4>
+          <p>311 items / 374 stock lines / 40,118 units loaded · under client review · zones ready; shelf bins may still need Mezzan list</p>
+        </div>
+        <div class="tl-item">
+          <h4>Cut-off &amp; tracking</h4>
+          <p>Cut-off complete · <strong>Batch tracking ON</strong> · <strong>Serial tracking OFF</strong> (do not map serials)</p>
+        </div>
+        <div class="tl-item">
+          <h4>Put-away support (ops)</h4>
+          <p>Move Order templates + instructions · Lot 1 corrections for Mezzan (ops, not API integration)</p>
+        </div>
+        <div class="tl-item">
+          <h4>Field mapping baseline</h4>
+          <p>Six Phase-1 APIs mapped to Zoho CFs · handbook + workbook for build</p>
+        </div>
+      </div>
+      <div class="callout">
+        <strong>Boundary:</strong> Do not ask Mostafa to build Zoho Flow / TIBCO webhooks / outbound GRN–shipping.
+        Ask him only for Zoho configuration, field structure, or migrated data clarifications.
+      </div>
+    </section>
+
+    <!-- EMAIL -->
+    <section class="panel" id="email">
+      <div class="section-head">
+        <h2>3. Mostafa’s email — key comments</h2>
+        <p>What he asked Waqqas to confirm after reading the handbook.</p>
+      </div>
+
+      <div class="card" style="margin-bottom:1rem">
+        <h3>Purpose of the package</h3>
+        <ul>
+          <li>Warehouse structure — locations, eighteen zones, sub-inventory → bin</li>
+          <li>Inbound cycle — PO, ASN, approval gate, GRN callback</li>
+          <li>Outbound cycle — SO, package, shipment, dispatch confirmation</li>
+          <li>Every custom field — why STC refs are line-level</li>
+          <li>API name traps — same label, different api_name by module</li>
+          <li>Batch reference construction agreed with STC</li>
+          <li>Six STC endpoints and what each creates in Zoho</li>
+          <li>Three open decisions + verification checklist</li>
+        </ul>
+      </div>
+
+      <h3 class="subhead">Three points most likely to cause rework</h3>
+      <div class="cards three">
+        <article class="card decision">
+          <span class="num">1 · Section 5</span>
+          <h3>API name traps</h3>
+          <p>Identical on-screen labels, different <code>api_name</code> by module.</p>
+          <p>Example: PO Line Number = <code>cf_vendor_po_line_number</code> on lines, but <code>cf_po_line_number</code> on SO header &amp; Shipment.</p>
+          <p class="warn">Wrong name → HTTP success + value discarded. Verify in the organisation, not only response code.</p>
+        </article>
+        <article class="card decision">
+          <span class="num">2 · Serial</span>
+          <h3>Serial tracking is OFF</h3>
+          <p><code>TrackSerialNumber</code> is false on all items. Only batch tracking is in use.</p>
+          <p class="warn">Old integration plan said serial + batch ON — <strong>correct that</strong> before treating the plan as final. Do not map serials.</p>
+        </article>
+        <article class="card decision">
+          <span class="num">3 · ASN</span>
+          <h3>Locator per ASN line</h3>
+          <p>STC locators vary line by line (2nd segment = line sequence). Header locator cannot represent a multi-line receipt.</p>
+          <p class="rec">ASN must carry locator per line. Batch reference depends on this.</p>
+        </article>
+      </div>
+
+      <div class="card" style="margin-top:1rem">
+        <h3>What he asked Waqqas to reply</h3>
+        <ol>
+          <li>Does anything conflict with your current mapping approach?</li>
+          <li>Your position on the three open decisions in Section 8 (for one STC request)</li>
+          <li>Do you need anything further from the Zoho side before the build proceeds?</li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- HANDBOOK FLOW -->
+    <section class="panel" id="handbook">
+      <div class="section-head">
+        <h2>4. Handbook — structured flow</h2>
+        <p>Same story as the PDF, in reading order.</p>
+      </div>
+
+      <div class="flow-stack">
+        <article class="card">
+          <h3>A. Warehouse</h3>
+          <ul>
+            <li>Parent location = container only</li>
+            <li>6 child entities · each 18 zones</li>
+            <li>Integration writes stock <strong>only</strong> to RECEIVING bins</li>
+            <li>Shelf put-away = Move Order (manual, out of Phase 1)</li>
+            <li>Never use legacy Receiving Zone / Receiving Area</li>
+          </ul>
+        </article>
+        <article class="card">
+          <h3>B. Inbound cycle</h3>
+          <ol>
+            <li>AddPurchaseOrder → PO Issued (no stock)</li>
+            <li>AddASN → Purchase Receive Pending Approval (no stock)</li>
+            <li>Mezzan approves → stock to RECEIVING + batch created</li>
+            <li>AddGRN fires to STC on approval</li>
+          </ol>
+          <p class="note">No separate ASN object in Zoho — ASN becomes a Purchase Receive. Do not auto-approve.</p>
+        </article>
+        <article class="card">
+          <h3>C. Outbound cycle</h3>
+          <ol>
+            <li>AddSalesOrder / RFD → Sales Order (committed)</li>
+            <li>Mezzan pick &amp; pack → Package (batch selected)</li>
+            <li>Mezzan ships → Shipment (stock leaves)</li>
+            <li>SendShippingConfirmation on dispatch · <code>cf_batch_id</code></li>
+          </ol>
+          <p class="note">Serial OFF. Expect many batches per item at picking.</p>
+        </article>
+        <article class="card">
+          <h3>D. Custom fields (why line-level)</h3>
+          <ul>
+            <li>PO / Line / Project / Release / Supplier Item Code at <strong>line</strong></li>
+            <li><code>cf_supplier_s_item_code</code> is <strong>mandatory</strong></li>
+            <li>Locator on PR line = <code>cf_storage_location</code> (use this)</li>
+            <li>Dropdowns: 18 zones · Priority High/Med/Low · Ship With Care Yes/No</li>
+          </ul>
+        </article>
+        <article class="card">
+          <h3>E. Batch formula (agreed with STC)</h3>
+          <p class="mono">{Date Received dd/MM/yyyy} - {Full Locator} - {Supplier Item Code}</p>
+          <p>Spaced hyphens · from line locator · never shorten locator</p>
+        </article>
+        <article class="card">
+          <h3>F. Six Phase-1 APIs</h3>
+          <ul>
+            <li>Inbound: Item · PO · ASN · Sales Order</li>
+            <li>Outbound: AddGRN · SendShippingConfirmation</li>
+            <li>UAT: <code>apitest.stcs.com.sa</code></li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <!-- ASK WAQQAS / DECISIONS -->
+    <section class="panel" id="ask-waqqas">
+      <div class="section-head">
+        <h2>5. Open decisions (Section 8) — for STC</h2>
+        <p>Recommended positions so Waqqas can reply Mostafa and raise one request to STC.</p>
+      </div>
+      <div class="cards three">
+        <article class="card decision">
+          <span class="num">D1</span>
+          <h3>SO PO number fields</h3>
+          <p>Both <code>cf_po_number</code> and <code>cf_locator_po_number</code> exist.</p>
+          <p class="rec">Recommend: STC poNumber → <code>cf_po_number</code>; keep locator PO separate.</p>
+        </article>
+        <article class="card decision">
+          <span class="num">D2</span>
+          <h3>ASN locator per line</h3>
+          <p class="rec">Required: Yes — must be in ASN payload for batch construction.</p>
+        </article>
+        <article class="card decision">
+          <span class="num">D3</span>
+          <h3>Priority / Ship With Care</h3>
+          <p class="rec">Expect High/Medium/Low and Yes/No — normalise if STC values differ slightly.</p>
+        </article>
+      </div>
+
+      <div class="check-list" style="margin-top:1rem">
+        <h3>Verification checklist (from handbook)</h3>
+        <ul class="checks">
+          <li>Line-level CFs on every line</li>
+          <li>Supplier Item Code on every line</li>
+          <li>Sub-inventory = exact zone name</li>
+          <li>Stock only in RECEIVING bins</li>
+          <li>Batch formula exact (spaced) from line locator</li>
+          <li>Multi-line receipt with different locators tested</li>
+          <li>ASN pending · no stock until approval</li>
+          <li>GRN only on approval</li>
+          <li>Correct PO Line Number api_name per module</li>
+          <li>Partial receipt balances correct</li>
+          <li>Verify in org — not only HTTP 200</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="callout">
+        <strong>Next:</strong> Use the <a href="index.html">Flow Guide</a> tab for animated inbound / approval / outbound playback.
+        Build starts from this package + TIBCO API docs (v4.3 / v3.1) + STC OAuth webhook confirmations.
+      </div>
+    </section>
+
+    <footer class="site-footer">
+      <p>Mostafa Package tab · Mezzan ↔ STC · Based on email + handbook + cycle video (07 Sep 2026)</p>
+      <p><a href="index.html">← Back to Flow Guide</a> · <a href="https://mezzan-stc-flow-guide.vercel.app/mostafa.html">Live URL</a></p>
+    </footer>
+  </main>
+</body>
+</html>
