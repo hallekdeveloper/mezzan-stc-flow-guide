@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mezzan ↔ STC · Integration Flow Guide</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div class="bg-grid" aria-hidden="true"></div>
+  <div class="bg-glow" aria-hidden="true"></div>
+
+  <header class="site-header">
+    <div class="brand">
+      <span class="brand-mark">M↔S</span>
+      <div>
+        <strong>Mezzan ↔ STC</strong>
+        <span>Zoho Inventory Integration · Flow Guide</span>
+      </div>
+    </div>
+    <nav class="nav">
+      <a href="#overview">Overview</a>
+      <a href="#warehouse">Warehouse</a>
+      <a href="#inbound">Inbound</a>
+      <a href="#approval">Approval</a>
+      <a href="#outbound">Outbound</a>
+      <a href="#fields">Fields</a>
+      <a href="#apis">APIs</a>
+      <a href="#checklist">Checklist</a>
+    </nav>
+  </header>
+
+  <main>
+    <!-- HERO -->
+    <section class="hero" id="top">
+      <p class="eyebrow">Hallek · Internal visual guide · Org 150001417597</p>
+      <h1>How data moves between<br /><em>STC Oracle / TIBCO</em> and <em>Zoho Inventory</em></h1>
+      <p class="lede">
+        Animated walkthrough of inbound purchase, the Mezzan approval gate, outbound sales dispatch,
+        custom-field traps, batch construction, and the six Phase‑1 APIs — based on Mostafa’s handbook and cycle recording.
+      </p>
+      <div class="hero-actions">
+        <a class="btn primary" href="#inbound">Play inbound cycle</a>
+        <a class="btn ghost" href="#outbound">Play outbound cycle</a>
+      </div>
+    </section>
+
+    <!-- OVERVIEW -->
+    <section class="panel" id="overview">
+      <div class="section-head">
+        <h2>1. Big picture</h2>
+        <p>Oracle stays on‑premise. All exchange goes through TIBCO. Zoho never touches the database.</p>
+      </div>
+
+      <div class="stage overview-stage">
+        <svg class="flow-svg" viewBox="0 0 1000 320" role="img" aria-label="STC to Zoho overview">
+          <defs>
+            <linearGradient id="gIn" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#0d9488"/>
+              <stop offset="100%" stop-color="#f59e0b"/>
+            </linearGradient>
+            <linearGradient id="gOut" x1="100%" y1="0%" x2="0%" y2="0%">
+              <stop offset="0%" stop-color="#ea580c"/>
+              <stop offset="100%" stop-color="#0d9488"/>
+            </linearGradient>
+            <filter id="soft"><feGaussianBlur stdDeviation="2"/></filter>
+          </defs>
+
+          <rect class="node stc" x="40" y="70" width="220" height="180" rx="16"/>
+          <text class="node-title" x="150" y="120" text-anchor="middle">STC</text>
+          <text class="node-sub" x="150" y="148" text-anchor="middle">Oracle on‑premise</text>
+          <text class="node-sub" x="150" y="172" text-anchor="middle">+ TIBCO ESB</text>
+          <text class="node-sub" x="150" y="196" text-anchor="middle">apitest.stcs.com.sa</text>
+
+          <rect class="node zoho" x="740" y="70" width="220" height="180" rx="16"/>
+          <text class="node-title" x="850" y="120" text-anchor="middle">Zoho</text>
+          <text class="node-sub" x="850" y="148" text-anchor="middle">Inventory (Mezzan)</text>
+          <text class="node-sub" x="850" y="172" text-anchor="middle">+ Flow / API layer</text>
+          <text class="node-sub" x="850" y="196" text-anchor="middle">Org 150001417597</text>
+
+          <path id="pathIn" class="wire" d="M260 120 C 420 120, 580 120, 740 120" stroke="url(#gIn)"/>
+          <path id="pathOut" class="wire" d="M740 200 C 580 200, 420 200, 260 200" stroke="url(#gOut)"/>
+
+          <text class="path-label" x="500" y="100" text-anchor="middle">INBOUND · Item · PO · ASN · SO</text>
+          <text class="path-label out" x="500" y="230" text-anchor="middle">OUTBOUND · AddGRN · Shipping Confirmation</text>
+
+          <circle class="packet packet-in" r="8"><animateMotion dur="2.8s" repeatCount="indefinite"><mpath href="#pathIn"/></animateMotion></circle>
+          <circle class="packet packet-out" r="8"><animateMotion dur="3.2s" repeatCount="indefinite"><mpath href="#pathOut"/></animateMotion></circle>
+        </svg>
+
+        <div class="legend">
+          <span><i class="dot in"></i> STC → Zoho (push / webhooks)</span>
+          <span><i class="dot out"></i> Zoho → STC (after warehouse action)</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- WAREHOUSE -->
+    <section class="panel" id="warehouse">
+      <div class="section-head">
+        <h2>2. Warehouse structure</h2>
+        <p>Every transaction resolves to a location, a zone, and a bin. Integration only writes to RECEIVING bins.</p>
+      </div>
+
+      <div class="cards three">
+        <article class="card">
+          <h3>Locations</h3>
+          <p>Parent: <strong>STC warehouses</strong> (container, no bin tracking).</p>
+          <ul>
+            <li>Solutions by STC — full bins (~3,488)</li>
+            <li>Upsource · Pulse · VAS</li>
+            <li>Solution Operation · STC Disposal</li>
+          </ul>
+          <p class="note">Each entity has its own vendor + customer (12 contacts).</p>
+        </article>
+        <article class="card">
+          <h3>18 zones per entity</h3>
+          <p>Cities × pools × sub‑inventories:</p>
+          <ul>
+            <li>Riyadh · Dammam · Jeddah</li>
+            <li>Standard · FreeStock</li>
+            <li>Project · Internal · Unused</li>
+          </ul>
+          <p class="note">Zone name = exact Sub Inventory dropdown value. Never use legacy “Receiving Zone / Receiving Area”.</p>
+        </article>
+        <article class="card">
+          <h3>Bins</h3>
+          <p>RECEIVING: <code>{City} - {SubInv} - RECEIVING</code></p>
+          <p>Shelf example: <code>Riyadh - Project - MZNAC0100A</code></p>
+          <p class="warn">Integration → RECEIVING only. Shelf move = Move Order (manual, out of Phase 1).</p>
+        </article>
+      </div>
+
+      <div class="resolve-box">
+        <h3>How sub‑inventory becomes a bin</h3>
+        <ol>
+          <li>City = Dammam if locator 4th segment is Dammam, else Riyadh</li>
+          <li>Map Project → Project · InternalN/Internal → Internal · UnUsed → Unused</li>
+          <li>Target = <code>{City} - {SubInv} - RECEIVING</code></li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- INBOUND -->
+    <section class="panel" id="inbound">
+      <div class="section-head">
+        <h2>3. Inbound cycle (Purchase)</h2>
+        <p>Four steps · two integration touchpoints · ASN becomes a Purchase Receive (no separate ASN object in Zoho).</p>
+      </div>
+
+      <div class="player">
+        <div class="player-toolbar">
+          <button type="button" class="btn primary" data-play="inbound">▶ Play animation</button>
+          <button type="button" class="btn ghost" data-pause="inbound">Pause</button>
+          <button type="button" class="btn ghost" data-reset="inbound">Reset</button>
+          <span class="step-label" id="inbound-label">Step 0 · Idle</span>
+        </div>
+
+        <div class="stage" id="inbound-stage">
+          <div class="flow-row" id="inbound-nodes">
+            <div class="flow-node" data-step="1">
+              <span class="badge">1</span>
+              <strong>AddPurchaseOrder</strong>
+              <small>STC → Zoho</small>
+              <em>Creates PO (Issued)</em>
+              <span class="stock">Stock: none</span>
+            </div>
+            <div class="flow-arrow" data-step="1">→</div>
+            <div class="flow-node" data-step="2">
+              <span class="badge">2</span>
+              <strong>AddASN</strong>
+              <small>STC → Zoho</small>
+              <em>PR Pending Approval</em>
+              <span class="stock">Stock: none</span>
+            </div>
+            <div class="flow-arrow" data-step="2">→</div>
+            <div class="flow-node mezzan" data-step="3">
+              <span class="badge">3</span>
+              <strong>Mezzan Approve</strong>
+              <small>In Zoho UI</small>
+              <em>PR → Received</em>
+              <span class="stock ok">Stock → RECEIVING</span>
+            </div>
+            <div class="flow-arrow" data-step="3">→</div>
+            <div class="flow-node out" data-step="4">
+              <span class="badge">4</span>
+              <strong>AddGRN</strong>
+              <small>Zoho → STC</small>
+              <em>Fires on approval</em>
+              <span class="stock">Callback</span>
+            </div>
+          </div>
+
+          <div class="anim-track">
+            <svg viewBox="0 0 900 80" class="mini-svg">
+              <path id="inTrack" d="M40 40 H860" class="wire"/>
+              <circle id="inPacket" class="packet packet-in" cx="40" cy="40" r="9"/>
+            </svg>
+            <p class="anim-caption" id="inbound-caption">Press Play to watch data move through the purchase cycle.</p>
+          </div>
+        </div>
+
+        <div class="detail-grid" id="inbound-details">
+          <div class="detail active" data-for="1">
+            <h4>Step 1 — Purchase Order</h4>
+            <ul>
+              <li>STC endpoint: <strong>AddPurchaseOrder</strong></li>
+              <li>Zoho: Purchase Order · set status <strong>Issued</strong> (not Draft)</li>
+              <li><strong>Intended Sub-Inventory</strong> mandatory at header</li>
+              <li>No stock movement</li>
+            </ul>
+          </div>
+          <div class="detail" data-for="2">
+            <h4>Step 2 — ASN → Purchase Receive</h4>
+            <ul>
+              <li>STC endpoint: <strong>AddASN</strong></li>
+              <li>Creates Purchase Receive in <strong>Pending Approval</strong></li>
+              <li><strong>Locator must be per line</strong> (<code>cf_storage_location</code>)</li>
+              <li>Sub-Inventory mandatory · <strong>no stock posts yet</strong></li>
+            </ul>
+          </div>
+          <div class="detail" data-for="3">
+            <h4>Step 3 — Approval gate (Mezzan)</h4>
+            <ul>
+              <li>ASN = goods are coming · Approval = physically arrived</li>
+              <li>Stock posts to zone RECEIVING bin</li>
+              <li>Batch created using Section 6 formula</li>
+              <li><strong>Do not auto-approve</strong></li>
+            </ul>
+          </div>
+          <div class="detail" data-for="4">
+            <h4>Step 4 — AddGRN to STC</h4>
+            <ul>
+              <li>Outbound POST after approval</li>
+              <li>Stock already posted at step 3</li>
+              <li>PO Number on receipt is native (from PO)</li>
+              <li>Receipt number auto-generated</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="callout">
+        <strong>Put-away (context only):</strong> After approval, stock sits in RECEIVING until Mezzan imports Move Orders onto shelves.
+        STC locators do not map to MZNxxxx barcodes — only the person placing the carton knows the shelf. Outside Phase 1 API.
+      </div>
+    </section>
+
+    <!-- APPROVAL -->
+    <section class="panel" id="approval">
+      <div class="section-head">
+        <h2>4. How approvals work</h2>
+        <p>Simple Approval on Purchase Receives — any user with approve permission can approve.</p>
+      </div>
+
+      <div class="player">
+        <div class="player-toolbar">
+          <button type="button" class="btn primary" data-play="approval">▶ Play approval story</button>
+          <button type="button" class="btn ghost" data-pause="approval">Pause</button>
+          <button type="button" class="btn ghost" data-reset="approval">Reset</button>
+          <span class="step-label" id="approval-label">Waiting for ASN…</span>
+        </div>
+
+        <div class="approval-board" id="approval-board">
+          <div class="ap-col" data-ap="1">
+            <h4>ASN arrives</h4>
+            <div class="ticket">Purchase Receive<br/><span>Pending Approval</span></div>
+            <p>Mezzan notified · stock still 0</p>
+          </div>
+          <div class="ap-pipe"><span class="pulse-dot"></span></div>
+          <div class="ap-col" data-ap="2">
+            <h4>Warehouse check</h4>
+            <div class="ticket soft">Physical goods<br/><span>qty · bin · batch info</span></div>
+            <p>Confirm what arrived</p>
+          </div>
+          <div class="ap-pipe"><span class="pulse-dot"></span></div>
+          <div class="ap-col" data-ap="3">
+            <h4>Approve in Zoho</h4>
+            <div class="ticket ok">Status → Received</div>
+            <p>Stock → RECEIVING + batch</p>
+          </div>
+          <div class="ap-pipe"><span class="pulse-dot"></span></div>
+          <div class="ap-col" data-ap="4">
+            <h4>Auto callback</h4>
+            <div class="ticket out">AddGRN → STC</div>
+            <p>Integration fires on approval</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="cards two">
+        <article class="card">
+          <h3>Why this gate exists</h3>
+          <p>If stock posted on ASN alone, Zoho would show inventory that is not on the floor yet. Approval = physical confirmation.</p>
+        </article>
+        <article class="card">
+          <h3>Config (from cycle video)</h3>
+          <ul>
+            <li>Module: Purchase Receives → Approvals</li>
+            <li>Type: <strong>Simple Approval</strong></li>
+            <li>Approvers example: sankar.pillai · (Hallek support users as configured)</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <!-- OUTBOUND -->
+    <section class="panel" id="outbound">
+      <div class="section-head">
+        <h2>5. Outbound cycle (Sales)</h2>
+        <p>SO → Package → Shipment shipped → Shipping Confirmation to STC.</p>
+      </div>
+
+      <div class="player">
+        <div class="player-toolbar">
+          <button type="button" class="btn primary" data-play="outbound">▶ Play animation</button>
+          <button type="button" class="btn ghost" data-pause="outbound">Pause</button>
+          <button type="button" class="btn ghost" data-reset="outbound">Reset</button>
+          <span class="step-label" id="outbound-label">Step 0 · Idle</span>
+        </div>
+
+        <div class="flow-row" id="outbound-nodes">
+          <div class="flow-node" data-step="1">
+            <span class="badge">1</span>
+            <strong>AddSalesOrder</strong>
+            <small>STC → Zoho</small>
+            <em>Sales Order / RFD</em>
+            <span class="stock">Committed</span>
+          </div>
+          <div class="flow-arrow" data-step="1">→</div>
+          <div class="flow-node mezzan" data-step="2">
+            <span class="badge">2</span>
+            <strong>Pick &amp; Pack</strong>
+            <small>Mezzan</small>
+            <em>Package</em>
+            <span class="stock">Batch selected</span>
+          </div>
+          <div class="flow-arrow" data-step="2">→</div>
+          <div class="flow-node mezzan" data-step="3">
+            <span class="badge">3</span>
+            <strong>Ship</strong>
+            <small>Mezzan</small>
+            <em>Shipment Order</em>
+            <span class="stock ok">Stock leaves</span>
+          </div>
+          <div class="flow-arrow" data-step="3">→</div>
+          <div class="flow-node out" data-step="4">
+            <span class="badge">4</span>
+            <strong>Shipping Confirm</strong>
+            <small>Zoho → STC</small>
+            <em>On dispatch</em>
+            <span class="stock">cf_batch_id</span>
+          </div>
+        </div>
+
+        <div class="anim-track">
+          <svg viewBox="0 0 900 80" class="mini-svg">
+            <path id="outTrack" d="M40 40 H860" class="wire out-wire"/>
+            <circle id="outPacket" class="packet packet-out" cx="40" cy="40" r="9"/>
+          </svg>
+          <p class="anim-caption" id="outbound-caption">Press Play to watch the sales / dispatch cycle.</p>
+        </div>
+
+        <div class="detail-grid" id="outbound-details">
+          <div class="detail active" data-for="1">
+            <h4>Step 1 — Sales Order</h4>
+            <ul>
+              <li>Endpoint: AddSalesOrder / CreateRFD</li>
+              <li>Dropdowns: Transaction Priority · Ship With Care</li>
+              <li>Stock committed, not dispatched</li>
+            </ul>
+          </div>
+          <div class="detail" data-for="2">
+            <h4>Step 2 — Package</h4>
+            <ul>
+              <li>Every item is <strong>batch tracked</strong> — picker selects batch</li>
+              <li>Many batches possible (one item can have 70+)</li>
+              <li><strong>Serial tracking OFF</strong> — do not map serials</li>
+            </ul>
+          </div>
+          <div class="detail" data-for="3">
+            <h4>Step 3 — Shipment</h4>
+            <ul>
+              <li>When shipment is <strong>shipped</strong>, stock leaves</li>
+              <li>This is the operational “dispatch” moment</li>
+            </ul>
+          </div>
+          <div class="detail" data-for="4">
+            <h4>Step 4 — SendShippingConfirmation</h4>
+            <ul>
+              <li>Outbound POST to STC on dispatch</li>
+              <li><code>cf_batch_id</code> on Shipment carries dispatched lot</li>
+              <li>Should always be populated (batch tracking ON)</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FIELDS -->
+    <section class="panel" id="fields">
+      <div class="section-head">
+        <h2>6. Custom fields &amp; traps</h2>
+        <p>STC references sit at <strong>line level</strong>. Wrong api_name → HTTP 200 + value discarded.</p>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Field</th><th>api_name</th><th>Why</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>PO Line Number (lines)</td><td><code>cf_vendor_po_line_number</code></td><td>item, PO line, PR line, SO line</td></tr>
+            <tr><td>PO Line Number (header)</td><td><code>cf_po_line_number</code></td><td>Sales Order header · Shipment</td></tr>
+            <tr><td>Project Number</td><td><code>cf_project_number</code></td><td>Line — receipt may span projects</td></tr>
+            <tr><td>Release Number</td><td><code>cf_release_number</code></td><td>Follows PO line</td></tr>
+            <tr><td>Supplier's Item Code</td><td><code>cf_supplier_s_item_code</code></td><td><strong>MANDATORY</strong> on lines</td></tr>
+            <tr><td>Locator (PR line)</td><td><code>cf_storage_location</code></td><td>USE THIS — varies per line</td></tr>
+            <tr><td>Locator (PR header)</td><td><code>cf_locator_full</code> / <code>cf_locator_location</code></td><td>Cannot represent multi-line</td></tr>
+            <tr><td>SO PO fields</td><td><code>cf_po_number</code> · <code>cf_locator_po_number</code></td><td>Open decision §8</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="cards two">
+        <article class="card">
+          <h3>Locator format (5 segments)</h3>
+          <p><code>Project.Line.PO.Location.Shipset</code></p>
+          <p class="mono">16602.31.41294.DB Schenker.00000</p>
+          <p class="note">Use full string exactly as STC sends — never shorten.</p>
+        </article>
+        <article class="card">
+          <h3>Restricted dropdowns</h3>
+          <ul>
+            <li>Sub Inventory — 18 zone names</li>
+            <li>Intended Sub-Inventory — 18 zone names (PO header)</li>
+            <li>Transaction Priority — High / Medium / Low</li>
+            <li>Ship With Care — Yes / No</li>
+          </ul>
+        </article>
+      </div>
+
+      <div class="batch-box" id="batch">
+        <h3>7. Batch reference (agreed with STC)</h3>
+        <div class="batch-formula">
+          <span>{Date Received}</span>
+          <i> - </i>
+          <span>{Locator}</span>
+          <i> - </i>
+          <span>{Supplier Item Code}</span>
+        </div>
+        <p class="mono">03/03/2026 - 16602.31.41294.DB Schenker.00000 - 6536501-1</p>
+        <ul>
+          <li>Spaced hyphen separator (supplier codes contain hyphens)</li>
+          <li>Build from <strong>line-level</strong> locator</li>
+          <li>Date <code>dd/MM/yyyy</code> · manufactured_date = same day as <code>yyyy-MM-dd</code></li>
+          <li>Expect high batch counts (~2,000 across Solutions data)</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- APIS -->
+    <section class="panel" id="apis">
+      <div class="section-head">
+        <h2>8. Six Phase‑1 APIs</h2>
+        <p>UAT host: <code>apitest.stcs.com.sa</code> · Specs: DBSchenker v4.3 · ERP-SupplyChain v3.1</p>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Endpoint</th><th>Direction</th><th>Creates / action in Zoho</th><th>Key notes</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>AddItemRequest</td><td class="in">STC → Zoho</td><td>Item</td><td>SKU = STC item code · Supplier Item Code mandatory</td></tr>
+            <tr><td>AddPurchaseOrder</td><td class="in">STC → Zoho</td><td>Purchase Order</td><td>Status Issued · Intended Sub-Inventory mandatory</td></tr>
+            <tr><td>AddASN</td><td class="in">STC → Zoho</td><td>PR Pending Approval</td><td>Locator per line · no stock</td></tr>
+            <tr><td>AddGRN</td><td class="out">Zoho → STC</td><td>Callback</td><td>On Mezzan approval</td></tr>
+            <tr><td>AddSalesOrder / RFD</td><td class="in">STC → Zoho</td><td>Sales Order</td><td>Priority · Ship With Care</td></tr>
+            <tr><td>SendShippingConfirmation</td><td class="out">Zoho → STC</td><td>Callback</td><td>On dispatch · cf_batch_id</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="cards two">
+        <article class="card">
+          <h3>Auth note (client meeting)</h3>
+          <p>STC wants <strong>OAuth 2.0 Bearer</strong> webhooks — not simple Flow URLs or direct Inventory POST URLs.
+          Inbound may need an API gateway in front of Zoho.</p>
+        </article>
+        <article class="card">
+          <h3>Out of Phase 1</h3>
+          <ul>
+            <li>POD · Move Order API · Returns/RTV</li>
+            <li>Stock snapshot · PO update/cancel beyond create</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <!-- DECISIONS + CHECKLIST -->
+    <section class="panel" id="checklist">
+      <div class="section-head">
+        <h2>9. Open decisions &amp; verification</h2>
+        <p>Must be answered with STC before mapping is final.</p>
+      </div>
+
+      <div class="cards three">
+        <article class="card decision">
+          <span class="num">D1</span>
+          <h3>SO PO fields</h3>
+          <p>Populate <code>cf_po_number</code> or <code>cf_locator_po_number</code>?</p>
+          <p class="rec"><strong>Recommend:</strong> STC poNumber → cf_po_number; keep locator PO separate.</p>
+        </article>
+        <article class="card decision">
+          <span class="num">D2</span>
+          <h3>ASN locator</h3>
+          <p>Does ASN carry locator per line?</p>
+          <p class="rec"><strong>Required:</strong> Yes — batch depends on line locator.</p>
+        </article>
+        <article class="card decision">
+          <span class="num">D3</span>
+          <h3>Dropdown values</h3>
+          <p>Priority &amp; Ship With Care exact enums?</p>
+          <p class="rec"><strong>Expect:</strong> High/Medium/Low · Yes/No — normalise if needed.</p>
+        </article>
+      </div>
+
+      <div class="check-list">
+        <h3>Verification checklist (before calling an endpoint “done”)</h3>
+        <ul class="checks">
+          <li>Line-level CFs on <em>every</em> line (not only first / header)</li>
+          <li><code>cf_supplier_s_item_code</code> on every line</li>
+          <li>Sub-inventory = one of 18 exact zone names</li>
+          <li>Stock lands in correct RECEIVING bin — never shelf locator</li>
+          <li>Batch matches spaced formula from line locator</li>
+          <li>Multi-line receipt with different locators tested</li>
+          <li>ASN = pending approval · zero stock movement</li>
+          <li>GRN only on approval · stock posts then</li>
+          <li>Correct PO Line Number api_name per module</li>
+          <li>Partial receipt → PO partially_received with correct balance</li>
+          <li><strong>Verify in the organisation — not only HTTP 200</strong></li>
+        </ul>
+      </div>
+    </section>
+
+    <footer class="site-footer">
+      <p>Mezzan ↔ STC Integration Flow Guide · Standalone visual · Based on Integration Reference Handbook (07 Sep 2026) + cycle recording</p>
+      <p>Open <code>index.html</code> in a browser · Folder: <code>mezzan-stc-flow-guide</code></p>
+    </footer>
+  </main>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
