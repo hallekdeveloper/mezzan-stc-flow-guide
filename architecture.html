@@ -30,13 +30,53 @@
       <p class="eyebrow">Build playbook · Phase 1 · Org 150001417597</p>
       <h1>Solution architecture<br /><em>how we implement — step by step</em></h1>
       <p class="lede">
-        Complete technical path: stack, inbound OAuth webhooks, outbound TIBCO calls, all six APIs with URLs,
-        headers, sample JSON, Zoho mapping rules, and a build checklist you can follow line by line.
+        Complete technical path: stack, inbound options, outbound TIBCO calls, all six APIs with URLs,
+        headers, sample JSON, Zoho mapping rules, and a build checklist. Includes open decisions from Mostafa’s review — resolve these before coding further.
       </p>
+    </section>
+
+    <section class="panel" id="open-points">
+      <div class="section-head">
+        <h2>0. Open points (Mostafa review — before build)</h2>
+        <p>Do not treat OAuth middleware or GRN locator as decided until the owners below confirm.</p>
+      </div>
+      <div class="cards two">
+        <article class="card decision">
+          <span class="num">P1 · Internal</span>
+          <h3>OAuth webhook layer = scope change</h3>
+          <p>Token URL + four Bearer POST endpoints means a <strong>custom middleware service</strong> (TLS, hosting, monitoring, uptime, maintenance). That is <strong>not</strong> Zoho Flow and was <strong>not</strong> in the original plan.</p>
+          <p class="warn">If STC insist on OAuth: confirm with <strong>Waleed &amp; Nesma</strong> first — cost, timeline, and who owns the production service change.</p>
+          <p class="note">Until then: document both options — (A) Zoho Flow webhooks if STC accept, (B) OAuth gateway only after internal approval.</p>
+        </article>
+        <article class="card decision">
+          <span class="num">P2 · Ask Manish / STC</span>
+          <h3>AddGRN <code>storageLocation</code> — what do we send?</h3>
+          <p>v3.1 sample sends line-level <code>storageLocation</code> (e.g. <code>A1-17-01</code>). Our design posts stock only to <strong>RECEIVING</strong> bins; put-away is manual / outside Phase 1.</p>
+          <p class="warn">Open: send RECEIVING bin name, echo STC locator from ASN, or another value? <strong>Must answer before outbound GRN is built.</strong></p>
+        </article>
+        <article class="card decision">
+          <span class="num">P3 · Ask Manish / STC · BLOCKER</span>
+          <h3>D2 — ASN locator per line</h3>
+          <p>v4.3 ASN sample may omit line locator; batch reference <strong>cannot</strong> be built without it. GRN sample proves STC use <code>storageLocation</code> in their model — confirm ASN will carry it (field name + sample).</p>
+          <p class="rec">Put P2 + P3 to Manish in <strong>one request</strong>.</p>
+        </article>
+        <article class="card decision">
+          <span class="num">P4 · Plan</span>
+          <h3>Dates still missing</h3>
+          <p>Manish asked for Development / SIT / UAT / cutover dates. Even <strong>indicative durations</strong> settle it. Add to revised plan and send.</p>
+        </article>
+        <article class="card decision">
+          <span class="num">P5 · Business</span>
+          <h3>Item <code>serialControl: "1"</code></h3>
+          <p>Spec sample sets serialControl to 1, but Zoho org has <strong>serial tracking OFF</strong>. Do not drop silently.</p>
+          <p class="warn">If STC send serialControl on some items: confirm business rule (reject, ignore with log, or enable serial for those SKUs).</p>
+        </article>
+      </div>
     </section>
 
     <section class="panel">
       <nav class="arch-toc" aria-label="Architecture sections">
+        <a href="#open-points">0. Open points</a>
         <a href="#stack">1. Stack</a>
         <a href="#pattern">2. Pattern</a>
         <a href="#build">3. Build steps</a>
@@ -44,7 +84,8 @@
         <a href="#outbound-apis">5. Outbound APIs</a>
         <a href="#mapping">6. Zoho mapping</a>
         <a href="#errors">7. Errors</a>
-        <a href="#uat">8. UAT checklist</a>
+        <a href="#timeline">8. Timeline</a>
+        <a href="#uat">9. UAT checklist</a>
       </nav>
     </section>
 
@@ -60,8 +101,9 @@
           </thead>
           <tbody>
             <tr><td>Warehouse UI</td><td>Zoho Inventory</td><td>Items, PO, Purchase Receive, SO, Package, Shipment</td></tr>
-            <tr><td>Orchestration</td><td>Zoho Flow (+ optional API gateway)</td><td>Triggers, mapping, retries, alerts</td></tr>
-            <tr><td>Inbound security</td><td>OAuth 2.0 Bearer webhooks</td><td>STC posts to our secured URLs (not plain Flow URL / not raw Inventory URL)</td></tr>
+            <tr><td>Orchestration</td><td>Zoho Flow</td><td>Outbound triggers, mapping, retries, alerts (original plan)</td></tr>
+            <tr><td>Inbound (option A)</td><td>Zoho Flow Incoming Webhooks</td><td>If STC accept secret-URL webhooks — no new hosted service</td></tr>
+            <tr><td>Inbound (option B)</td><td>OAuth 2.0 Bearer gateway</td><td><strong>Scope change</strong> — custom middleware; needs Waleed/Nesma approval first</td></tr>
             <tr><td>STC gateway</td><td>TIBCO ESB</td><td>In front of on‑prem Oracle · UAT <code>apitest.stcs.com.sa</code></td></tr>
             <tr><td>Specs</td><td>DBSchenker v4.3 · ERP-SupplyChain v3.1</td><td>Payload shapes + outbound GRN / Shipping Confirmation</td></tr>
           </tbody>
@@ -75,17 +117,18 @@
       </div>
       <div class="arch-box">
         <pre class="json" style="background:#0b1c2c">STC / TIBCO
-   │  OAuth token + POST JSON
+   │  POST JSON  (OAuth Bearer IF option B approved — else Flow webhook)
    ▼
-Our webhook API  (Item / PO / ASN / SO)
-   │  validate Bearer → map fields
+Inbound receiver  (Flow webhook OR approved OAuth gateway)
+   │  map fields (exact CF api_names)
    ▼
-Zoho Inventory  (create / update records)
+Zoho Inventory  (Item / PO / PR Pending / SO)
 
-Mezzan works in Zoho (approve receive · pack · ship)
+Mezzan: approve receive · pack · ship
    │
    ▼
-Zoho Flow HTTP  →  TIBCO AddGRN / SendShippingConfirmation</pre>
+Zoho Flow HTTP  →  TIBCO AddGRN / SendShippingConfirmation
+   (storageLocation on GRN = OPEN — see §0 P2)</pre>
       </div>
       <div class="cards two" style="margin-top:1rem">
         <article class="card">
@@ -104,11 +147,11 @@ Zoho Flow HTTP  →  TIBCO AddGRN / SendShippingConfirmation</pre>
         <h2>3. Build steps (follow in order)</h2>
       </div>
       <ol class="step-build">
-        <li><strong>Lock STC answers</strong> — UAT api_key + Client-Id, webhook push yes, firewall allowlist, OAuth client credentials, Section 8 decisions (SO PO field, ASN line locator, Priority/Ship With Care enums).</li>
-        <li><strong>Create OAuth webhook layer</strong> — token URL + 4 POST endpoints. Validate Bearer. Return clear 401/400.</li>
-        <li><strong>Connect Zoho Inventory</strong> — server OAuth / connection with org id <code>150001417597</code>. Write Items, POs, PRs, SOs with exact CF api_names.</li>
-        <li><strong>Inbound mapping</strong> — implement Item → PO → ASN(PR Pending) → SO using rules below. Locator per ASN line. Batch only on approval.</li>
-        <li><strong>Approval trigger</strong> — on Purchase Receive approved: post stock logic already in Zoho; Flow calls AddGRN.</li>
+        <li><strong>Lock open points (§0)</strong> — Waleed/Nesma on OAuth scope; Manish on GRN storageLocation + ASN line locator; serialControl business rule; publish indicative dates.</li>
+        <li><strong>Choose inbound receiver</strong> — Flow webhooks (original plan) <em>or</em> OAuth gateway only after internal approval.</li>
+        <li><strong>Connect Zoho Inventory</strong> — org id <code>150001417597</code>. Write with exact CF api_names.</li>
+        <li><strong>Inbound mapping</strong> — Item → PO → ASN(PR Pending) → SO. Locator per ASN line once STC confirms. Batch on approval only.</li>
+        <li><strong>Approval trigger</strong> — on PR approved: Flow calls AddGRN with agreed <code>storageLocation</code> rule.</li>
         <li><strong>Outbound ship trigger</strong> — on Shipment shipped: Flow calls SendShippingConfirmation with <code>cf_batch_id</code>.</li>
         <li><strong>Retries &amp; alerts</strong> — 408/409 retry 3×; 400/401 no blind retry; email alert after failure.</li>
         <li><strong>UAT</strong> — run checklist; verify values in Zoho UI, not only HTTP 200.</li>
@@ -136,13 +179,14 @@ Zoho Flow HTTP  →  TIBCO AddGRN / SendShippingConfirmation</pre>
           <h4>Headers</h4>
           <ul>
             <li><code>api_key</code> · <code>Client-Id</code> · <code>Sender-Msg-Id</code> (unique per call)</li>
-            <li>Our layer also requires <code>Authorization: Bearer &lt;access_token&gt;</code></li>
+            <li><strong>Our layer:</strong> if Option B approved — <code>Authorization: Bearer &lt;access_token&gt;</code>. If Option A (Flow webhook) — secret URL; confirm with STC.</li>
           </ul>
           <h4>What we do in Zoho</h4>
           <ul>
             <li>SKU / item code = STC <code>itemCode</code> (searchable by name or SKU only)</li>
             <li>Map <code>supplierItemCode</code> → <code>cf_supplier_s_item_code</code> (mandatory)</li>
-            <li>Batch tracking ON · Serial OFF — ignore serial mapping</li>
+            <li>Batch tracking ON · Serial tracking OFF across the org</li>
+            <li><strong>Open (P5):</strong> if STC send <code>serialControl: "1"</code>, do not ignore silently — confirm business rule (reject / log-and-ignore / enable serial for those SKUs)</li>
           </ul>
           <h4>Sample JSON (from STC spec)</h4>
           <pre class="json">{
@@ -227,8 +271,8 @@ Zoho Flow HTTP  →  TIBCO AddGRN / SendShippingConfirmation</pre>
             <li>Line refs: vendor line, STC item, supplier item, project, release</li>
             <li>Do <strong>not</strong> auto-approve</li>
           </ul>
-          <h4>Note</h4>
-          <p style="color:var(--muted);margin:0">v4.3 sample may omit line locator — Mostafa/handbook require STC to send it. Confirm in Section 8 / STC new API doc.</p>
+          <h4>Note · BLOCKER (P3 / D2)</h4>
+          <p style="color:var(--muted);margin:0">v4.3 sample may omit line locator — handbook requires locator per line for batch. GRN sample shows STC use <code>storageLocation</code>. <strong>Confirm with Manish</strong> that ASN carries locator per line (field name + sample) before building receive/batch logic.</p>
         </div>
       </article>
 
@@ -294,6 +338,13 @@ Zoho Flow HTTP  →  TIBCO AddGRN / SendShippingConfirmation</pre>
           <ul>
             <li>Zoho event: Purchase Receive → Approved / Received</li>
             <li>Stock already posted to RECEIVING + batch created at this moment</li>
+          </ul>
+          <h4>Open (P2) — <code>storageLocation</code> on AddGRN</h4>
+          <ul>
+            <li>v3.1 sample sends line <code>storageLocation</code> (e.g. <code>A1-17-01</code>)</li>
+            <li>Our Phase 1 design: stock sits in <strong>RECEIVING</strong> only; shelf put-away is manual / outside Phase 1</li>
+            <li><strong>Ask Manish:</strong> should we send (A) RECEIVING bin name, (B) the locator STC sent on ASN, or (C) another value?</li>
+            <li>Do not hard-code outbound GRN until this is answered</li>
           </ul>
           <h4>Headers</h4>
           <ul>
@@ -428,9 +479,32 @@ Zoho Flow HTTP  →  TIBCO AddGRN / SendShippingConfirmation</pre>
       <p style="color:var(--muted);margin:0.75rem 0 0"><code>batchId</code> must be unique. Duplicate batchId returns error.</p>
     </section>
 
+    <section class="panel" id="timeline">
+      <div class="section-head">
+        <h2>8. Timeline (indicative — to send Manish)</h2>
+        <p>Placeholder durations until Waqqas / Waleed lock dates. Replace with calendar dates in the revised plan.</p>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Phase</th><th>Indicative duration</th><th>Depends on</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Build (Flow + mapping)</td><td>TBD days</td><td>Open points P2/P3; inbound option A or B</td></tr>
+            <tr><td>Connectivity testing</td><td>TBD days</td><td>UAT api_key, Client-Id, webhook/firewall</td></tr>
+            <tr><td>UAT (SIT + scenarios)</td><td>TBD days</td><td>STC TIBCO + Mezzan warehouse</td></tr>
+            <tr><td>Cutover / go-live</td><td>TBD</td><td>Prod URL/keys + sign-off</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout">
+        <strong>Action:</strong> Replace TBD with real dates this week and email Manish (he has asked repeatedly).
+      </div>
+    </section>
+
     <section class="panel" id="uat">
       <div class="section-head">
-        <h2>8. UAT checklist</h2>
+        <h2>9. UAT checklist</h2>
       </div>
       <ul class="checks">
         <li>Item create + update</li>
